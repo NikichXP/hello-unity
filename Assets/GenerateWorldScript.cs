@@ -14,20 +14,15 @@ public class GenerateWorldScript : MonoBehaviour
     private List<Vector3> _world = new();
     private Dictionary<int, List<int>> _createdBlocks = new();
     private List<Vector3> _bakedVectors;
-
-    
-    private BlockingCollection<Vector3> _possibleVerticles = new();
-    private List<Vector3> _blocksToCreate = new();
-    
     
     private int _counter = 0;
     private Vector3 _lastGenerationPoint = new(-1000, -1000, -1000);
 
     void Start()
     {
-        new Thread(verticlesInitializer).Start();
         _bakedVectors = _bakeVectorMap();
         CreateCubeAt(new Vector3(0, 0, 0));
+        _createdBlocks[0] = new List<int> {0};
     }
 
     // TODO Add chunks of data to not test against every possible block
@@ -38,37 +33,22 @@ public class GenerateWorldScript : MonoBehaviour
             return;
         }
 
-        while (_blocksToCreate.Count > 0)
-        {
-            var block = _blocksToCreate.Take(1).First();
-            CreateCubeAt(block);
-            _blocksToCreate.Remove(block);
-        }
-
         var groundOnPlayer = Player.transform.position;
         groundOnPlayer.y = 0;
         var neededPositions = _generatePositionsToCheck(groundOnPlayer);
-        neededPositions.ForEach(_possibleVerticles.Add);
-        // _createPositions(neededPositions);
+        _createPositions(neededPositions.Select(vector => Tuple.Create((int)vector.x, (int)vector.z)).ToList());
 
         _lastGenerationPoint = Player.transform.position;
     }
 
-    private void verticlesInitializer()
-    {
-        while (true)
-        {
-            var verticle = _possibleVerticles.Take();
-            if (_world.All(position => position != verticle))
-            {
-                CreateCubeAt(verticle);
-            }
-        }
-    }
-
     private List<Vector3> _generatePositionsToCheck(Vector3 position)
     {
-        return _bakedVectors.Select(vector => vector + position).ToList();
+        var roundedPosition = new Vector3(
+            (float) Math.Round(position.x),
+            (float) Math.Round(position.y),
+            (float) Math.Round(position.z)
+        );
+        return _bakedVectors.Select(vector => vector + roundedPosition).ToList();
     }
 
     private List<Vector3> _bakeVectorMap()
@@ -90,23 +70,33 @@ public class GenerateWorldScript : MonoBehaviour
         return neededPositions;
     }
 
-    // private void _createPositions(List<Vector3> neededPositions)
-    // {
-    //     foreach (var position in neededPositions)
-    //     {
-    //         if (_world.All(obj => obj.transform.position != position))
-    //         {
-    //             CreateCubeAt(position);
-    //         }
-    //     }
-    // }
+    private void _createPositions(List<Tuple<int, int>> neededPositions)
+    {
+        foreach (var position in neededPositions)
+        {
+            var list = _createdBlocks.GetOrPut(position.Item1, new List<int>());
+            if (list == null)
+            {
+                list = new List<int> {position.Item2};
+                _createdBlocks[position.Item1] = list;
+            }
+            else
+            {
+                if (!list.Contains(position.Item2))
+                {
+                    CreateCubeAt(new Vector3(position.Item1, 0, position.Item2));
+                    list.Add(position.Item2);
+                }
+            }
+        }
+    }
 
     private void CreateCubeAt(Vector3 position)
     {
         GameObject cube = GameObject.CreatePrimitive(PrimitiveType.Cube);
         cube.transform.position = position;
         _world.Add(cube.transform.position);
-        // Debug.Log("Created cube " + _counter++);
+        Debug.Log("Created cube " + _counter++);
     }
 
     private static Vector3 RoundVector(Vector3 src)
